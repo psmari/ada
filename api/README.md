@@ -15,7 +15,7 @@ Uma API back-end construída com FastAPI que utiliza a API do Google Gemini para
 
 ## Tecnologias Utilizadas
 
--   **Back-end**: Python 3.13
+-   **Backend**: Python 3.13
 -   **Framework**: FastAPI
 -   **Validação de Dados**: Pydantic
 -   **Servidor ASGI**: Uvicorn
@@ -33,8 +33,8 @@ Siga estes passos para configurar o ambiente de desenvolvimento local.
 
 **1. Clone o Repositório**
 ```bash
-git clone <url-do-seu-repositorio>
-cd <nome-do-seu-repositorio>
+git clone https://github.com/psmari/ada.git
+cd /ada
 ```
 
 **2. Crie e Ative um Ambiente Virtual**
