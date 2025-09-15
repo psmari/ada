@@ -1,8 +1,15 @@
 import os
+from dotenv import load_dotenv
 import google.generativeai as genai
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
 from pydantic import BaseModel
 from typing import Annotated, List
+
+from pydantic_models.dna_models import DnaResponse
+from pydantic_models.studio_models import StudioTalkRequest, StudioTalkResponse
+from servicos.prompts import gerar_prompt_para_dna
+
+load_dotenv()
 
 try:
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -14,52 +21,6 @@ except KeyError:
 model = genai.GenerativeModel('gemini-2.5-pro')
 
 app = FastAPI()
-
-@app.get('/')
-async def root():
-    return {'message': 'Hello World'}
-
-class DnaResponse(BaseModel):
-    dna_turma: str
-
-class ChatMessage(BaseModel):
-    """Define a estrutura de uma única mensagem no histórico."""
-    role: str  # "user" ou "model"
-    content: str
-
-class StudioTalkRequest(BaseModel):
-    """Define a estrutura do corpo da requisição (JSON de entrada)."""
-    dna_turma: str
-    historico_conversa: List[ChatMessage]
-    nova_mensagem: str
-
-class StudioTalkResponse(BaseModel):
-    """Define a estrutura da resposta JSON de saída."""
-    respostaIA: str
-    historico_conversa: str
-
-def montar_prompt(materia: str, conteudo_csv: str) -> str:
-    """
-    Formata o prompt final que será enviado para a API do Gemini,
-    inserindo o nome da matéria e o conteúdo da planilha.
-    """
-    return f"""
-        Você é um Analista de Dados Pedagógicos especializado em ensino técnico. Você recebeu dados brutos de uma pesquisa aplicada a uma turma do SENAI, no formato de planilha (CSV). Sua tarefa é analisar esses dados e gerar um parágrafo conciso e acionável chamado 'DNA da Turma'.
-
-        Instruções para a Análise:
-        Nível de Experiência: Analise as respostas do csv identifique a distribuição em porcentagem (ex: '80% iniciante', 'grupo bem dividido entre novatos e experientes (40% e 60%)') na matéria de {materia}.
-        Afinidades Dominantes: Identifique as 2 ou 3 áreas de interesse ou experiência prévia mais citadas nas respostas de múltipla escolha.
-        Padrões Ocultos: Análise as respostas abertas ('conte uma vez que consertou algo') e encontre temas recorrentes (ex: 'muitos relatam experiências com consertos eletrônicos', 'vários mencionam projetos com madeira').
-        Estilo de Aprendizagem: Determine qual o estilo de aprendizagem (Visual, Auditivo, Leitura, Cinestésico) predominante na turma.
-        Marcas e especificidades: Cite marcas que foram mencionada na pesquisa, liste coisas específicas da turma.
-        Formato do Resultado: Apresente a análise final em um único parágrafo de texto, começando com 'DNA da Turma:'. O texto deve ser prático, direto e fácil para um instrutor entender e usar imediatamente.
-        
-        Esse são os dados do csv: 
-        '''
-        {conteudo_csv}
-        '''
-    """
-
 
 @app.post(
     '/api/gerar-dna',
@@ -92,7 +53,7 @@ async def gerar_dna_da_turma(
         conteudo_csv_bytes = await dados_brutos.read()
         conteudo_csv_str = conteudo_csv_bytes.decode('utf-8')
 
-        prompt_final = montar_prompt(materia=materia, conteudo_csv=conteudo_csv_str)
+        prompt_final = gerar_prompt_para_dna(materia=materia, conteudo_csv=conteudo_csv_str)
 
         response = await model.generate_content_async(prompt_final)
 
