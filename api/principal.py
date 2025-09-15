@@ -1,12 +1,18 @@
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
-from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Form, UploadFile, File, HTTPException, status
 from typing import Annotated, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import or_ 
+from typing import List, Optional
 
-from pydantic_models.dna_models import DnaResponse
-from pydantic_models.studio_models import StudioTalkRequest, StudioTalkResponse
+from servicos.banco_de_dados import get_db
+from db_models.turma import Turma
+from schemas.turma_models import TurmaRead, TurmaUpsert
+from schemas.dna_models import DnaResponse
+from schemas.studio_models import StudioTalkRequest, StudioTalkResponse
 from servicos.prompts import gerar_prompt_para_dna
 
 load_dotenv()
@@ -111,3 +117,64 @@ async def studio_talk(request: StudioTalkRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ocorreu um erro inesperado na comunicação com a IA: {e}"
         )
+
+@app.get("/api/turmas", response_model=List[TurmaRead],  tags=["Turma"],)
+async def get_turmas(
+    db: AsyncSession = Depends(get_db),
+    search: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    Retorna uma lista paginada de turmas.
+    Se o parâmetro 'search' for fornecido, filtra por nome e código da turma.
+    """
+    query = select(Turma).order_by(Turma.id)
+
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            or_(
+                Turma.nome.ilike(search_filter),
+                Turma.cod_turma.ilike(search_filter)
+            )
+        )
+
+    query = query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(query)
+    turmas = result.scalars().all()
+    return turmas
+
+
+@app.put("/api/turmas", status_code=status.HTTP_200_OK,  tags=["Turma"],)
+async def upsert_turma(turma: TurmaUpsert, db: AsyncSession = Depends(get_db)):
+    """
+    Cria uma nova turma se o ID não for fornecido.
+    Atualiza uma turma existente se o ID for fornecido.
+    """
+    if turma.id:
+        db_turma = await db.get(Turma, turma.id)
+        if not db_turma:
+            raise HTTPException(status_code=404, detail="Turma não encontrada")
+        
+        turma_data = turma.model_dump(exclude_unset=True)
+        for key, value in turma_data.items():
+            setattr(db_turma, key, value)
+            
+        message = f"Turma {turma.id} atualizada com sucesso"
+        db.add(db_turma)
+
+    else:
+        result = await db.execute(select(Turma).filter(Turma.cod_turma == turma.cod_turma))
+        if result.scalars().first():
+            raise HTTPException(status_code=409, detail="Uma turma com este código já existe")
+            
+        db_turma = Turma(**turma.model_dump())
+        db.add(db_turma)
+        message = "Turma criada com sucesso"
+    
+    await db.commit()
+    await db.refresh(db_turma)
+
+    return {"message": message}
