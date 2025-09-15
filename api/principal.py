@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
-from fastapi import Depends, FastAPI, Form, UploadFile, File, HTTPException, status
+from fastapi import Depends, FastAPI, Form, Response, UploadFile, File, HTTPException, status
 from typing import Annotated, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -182,3 +182,23 @@ async def upsert_turma(turma: TurmaUpsert, db: AsyncSession = Depends(get_db)):
     await db.refresh(db_turma)
 
     return {"message": message}
+
+
+@app.delete("/api/turmas/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Turma"],)
+async def delete_turma(id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Deleta uma turma específica pelo seu ID.
+    """
+    db_turma = await db.get(Turma, id)
+
+    if not db_turma:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Turma com o id {id} não encontrada"
+        )
+
+    await db.delete(db_turma)
+
+    await db.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
