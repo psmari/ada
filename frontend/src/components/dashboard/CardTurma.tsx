@@ -8,7 +8,7 @@ interface CardTurmaProps {
   subtitulo: string
 }
 
-const CardTurma: React.FC<CardTurmaProps> = ({ id, titulo, subtitulo }) => {
+const CardTurma: React.FC<CardTurmaProps> = ({ titulo, subtitulo }) => {
   const navigate = useNavigate()
   const { carregarTurma } = useTurma()
 
