@@ -1,8 +1,21 @@
 import os
+from dotenv import load_dotenv
 import google.generativeai as genai
-from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Form, Response, UploadFile, File, HTTPException, status
 from typing import Annotated, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import or_ 
+from typing import List, Optional
+
+from servicos.banco_de_dados import get_db
+from db_models.turma import Turma
+from schemas.turma_models import TurmaRead, TurmaUpsert
+from schemas.dna_models import DnaResponse
+from schemas.studio_models import StudioTalkRequest, StudioTalkResponse
+from servicos.prompts import gerar_prompt_para_dna
+
+load_dotenv()
 
 try:
     genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -18,48 +31,6 @@ app = FastAPI()
 @app.get('/')
 async def root():
     return {'message': 'Hello World'}
-
-class DnaResponse(BaseModel):
-    dna_turma: str
-
-class ChatMessage(BaseModel):
-    """Define a estrutura de uma única mensagem no histórico."""
-    role: str  # "user" ou "model"
-    content: str
-
-class StudioTalkRequest(BaseModel):
-    """Define a estrutura do corpo da requisição (JSON de entrada)."""
-    dna_turma: str
-    historico_conversa: List[ChatMessage]
-    nova_mensagem: str
-
-class StudioTalkResponse(BaseModel):
-    """Define a estrutura da resposta JSON de saída."""
-    respostaIA: str
-    historico_conversa: str
-
-def montar_prompt(materia: str, conteudo_csv: str) -> str:
-    """
-    Formata o prompt final que será enviado para a API do Gemini,
-    inserindo o nome da matéria e o conteúdo da planilha.
-    """
-    return f"""
-        Você é um Analista de Dados Pedagógicos especializado em ensino técnico. Você recebeu dados brutos de uma pesquisa aplicada a uma turma do SENAI, no formato de planilha (CSV). Sua tarefa é analisar esses dados e gerar um parágrafo conciso e acionável chamado 'DNA da Turma'.
-
-        Instruções para a Análise:
-        Nível de Experiência: Analise as respostas do csv identifique a distribuição em porcentagem (ex: '80% iniciante', 'grupo bem dividido entre novatos e experientes (40% e 60%)') na matéria de {materia}.
-        Afinidades Dominantes: Identifique as 2 ou 3 áreas de interesse ou experiência prévia mais citadas nas respostas de múltipla escolha.
-        Padrões Ocultos: Análise as respostas abertas ('conte uma vez que consertou algo') e encontre temas recorrentes (ex: 'muitos relatam experiências com consertos eletrônicos', 'vários mencionam projetos com madeira').
-        Estilo de Aprendizagem: Determine qual o estilo de aprendizagem (Visual, Auditivo, Leitura, Cinestésico) predominante na turma.
-        Marcas e especificidades: Cite marcas que foram mencionada na pesquisa, liste coisas específicas da turma.
-        Formato do Resultado: Apresente a análise final em um único parágrafo de texto, começando com 'DNA da Turma:'. O texto deve ser prático, direto e fácil para um instrutor entender e usar imediatamente.
-        
-        Esse são os dados do csv: 
-        '''
-        {conteudo_csv}
-        '''
-    """
-
 
 @app.post(
     '/api/gerar-dna',
@@ -92,7 +63,7 @@ async def gerar_dna_da_turma(
         conteudo_csv_bytes = await dados_brutos.read()
         conteudo_csv_str = conteudo_csv_bytes.decode('utf-8')
 
-        prompt_final = montar_prompt(materia=materia, conteudo_csv=conteudo_csv_str)
+        prompt_final = gerar_prompt_para_dna(materia=materia, conteudo_csv=conteudo_csv_str)
 
         response = await model.generate_content_async(prompt_final)
 
@@ -150,3 +121,84 @@ async def studio_talk(request: StudioTalkRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ocorreu um erro inesperado na comunicação com a IA: {e}"
         )
+
+@app.get("/api/turmas", response_model=List[TurmaRead],  tags=["Turma"],)
+async def get_turmas(
+    db: AsyncSession = Depends(get_db),
+    search: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    Retorna uma lista paginada de turmas.
+    Se o parâmetro 'search' for fornecido, filtra por nome e código da turma.
+    """
+    query = select(Turma).order_by(Turma.id)
+
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            or_(
+                Turma.nome.ilike(search_filter),
+                Turma.cod_turma.ilike(search_filter)
+            )
+        )
+
+    query = query.offset((page - 1) * limit).limit(limit)
+
+    result = await db.execute(query)
+    turmas = result.scalars().all()
+    return turmas
+
+
+@app.put("/api/turmas", status_code=status.HTTP_200_OK,  tags=["Turma"],)
+async def upsert_turma(turma: TurmaUpsert, db: AsyncSession = Depends(get_db)):
+    """
+    Cria uma nova turma se o ID não for fornecido.
+    Atualiza uma turma existente se o ID for fornecido.
+    """
+    if turma.id:
+        db_turma = await db.get(Turma, turma.id)
+        if not db_turma:
+            raise HTTPException(status_code=404, detail="Turma não encontrada")
+        
+        turma_data = turma.model_dump(exclude_unset=True)
+        for key, value in turma_data.items():
+            setattr(db_turma, key, value)
+            
+        message = f"Turma {turma.id} atualizada com sucesso"
+        db.add(db_turma)
+
+    else:
+        result = await db.execute(select(Turma).filter(Turma.cod_turma == turma.cod_turma))
+        if result.scalars().first():
+            raise HTTPException(status_code=409, detail="Uma turma com este código já existe")
+            
+        db_turma = Turma(**turma.model_dump())
+        db.add(db_turma)
+        message = "Turma criada com sucesso"
+    
+    await db.commit()
+    await db.refresh(db_turma)
+
+    return {"message": message}
+
+
+@app.delete("/api/turmas/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Turma"],)
+async def delete_turma(id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Deleta uma turma específica pelo seu ID.
+    """
+    db_turma = await db.get(Turma, id)
+
+    if not db_turma:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Turma com o id {id} não encontrada"
+        )
+
+    await db.delete(db_turma)
+
+    await db.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

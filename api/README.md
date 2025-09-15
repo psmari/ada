@@ -60,7 +60,7 @@ pip install -r requirements.txt
 ```
 
 **4. Configure a Chave de API**
-A aplicação precisa da sua chave do Google Gemini para funcionar. Configure-a como uma variável de ambiente. (olhe o .env-example)
+A aplicação precisa da sua chave do Google Gemini para funcionar. Configure-a como uma variável de ambiente e export. (olhe o .env-example)
 
 ## Como Executar
 Com o ambiente virtual ativado e a variável de ambiente configurada, inicie o servidor:
