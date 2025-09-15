@@ -28,6 +28,10 @@ model = genai.GenerativeModel('gemini-2.5-pro')
 
 app = FastAPI()
 
+@app.get('/')
+async def root():
+    return {'message': 'Hello World'}
+
 @app.post(
     '/api/gerar-dna',
     response_model=DnaResponse,
