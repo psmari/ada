@@ -66,7 +66,7 @@ A aplicação precisa da sua chave do Google Gemini para funcionar. Configure-a 
 Com o ambiente virtual ativado e a variável de ambiente configurada, inicie o servidor:
 
 ```bash
-uvicorn main:app --reload
+uvicorn principal:app --reload
 ```
 
 A API estará disponível em http://127.0.0.1:8000.
