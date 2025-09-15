@@ -46,7 +46,7 @@ def get_database_url():
     host = os.getenv("DATABASE_HOST")
     port = os.getenv("DATABASE_PORT")
     db_name = os.getenv("DATABASE_NAME")
-    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{db_name}"
+    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db_name}"
 
 config.set_main_option('sqlalchemy.url', get_database_url())
 

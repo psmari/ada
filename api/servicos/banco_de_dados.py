@@ -14,7 +14,7 @@ DB_NAME = os.getenv("DATABASE_NAME")
 if not all([DB_USER, DB_PASSWORD, DB_NAME]):
     raise ValueError("Variáveis de ambiente essenciais do banco de dados não foram definidas.")
 
-DATABASE_URL = f"mysql+aiomysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 
