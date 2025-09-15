@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import or_ 
 from typing import List, Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 from servicos.banco_de_dados import get_db
 from db_models.turma import Turma
@@ -27,6 +28,19 @@ except KeyError:
 model = genai.GenerativeModel('gemini-2.5-pro')
 
 app = FastAPI()
+
+origins = [
+    os.environ["FRONTEND_URL"]
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"], 
+)
+
 
 @app.get('/')
 async def root():
