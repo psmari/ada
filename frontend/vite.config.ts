@@ -5,23 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
-    open: true,
-    host: '0.0.0.0',
-    proxy: {
-      '/api': {
-        target: 'https://ada-y5en.onrender.com',
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api/, '/api')
-      }
-    }
+    // Makes the server accessible externally
+    host: true,
+    // Allows requests from your Render host
+    allowedHosts: [process.env.VITE_RENDER_HOST],
   },
-  build: {
-    rollupOptions: {
-      input: {
-        app: './index.html', // default
-      },
-    },
-  },
-})
+});
